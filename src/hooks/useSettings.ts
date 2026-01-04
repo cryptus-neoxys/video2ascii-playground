@@ -20,7 +20,7 @@ function saveToStorage(settings: AsciiSettings): void {
   }
 }
 
-// Keys that should trigger a video restart when changed
+// Keys that should trigger a video restart when committed
 const RESTART_KEYS: (keyof AsciiSettings)[] = [
   'numColumns', 'colored', 'brightness', 'blend', 'highlight', 'charset',
   'enableMouse', 'trailLength', 'enableRipple', 'rippleSpeed',
@@ -37,7 +37,7 @@ export function useSettings(initialVideoSrc: string) {
     };
   });
 
-  // Version counter that increments on settings changes to trigger component remount
+  // Version counter that increments on settings commit to trigger component remount
   const [settingsVersion, setSettingsVersion] = useState(0);
 
   // Persist to localStorage on change (debounced)
@@ -48,6 +48,17 @@ export function useSettings(initialVideoSrc: string) {
     return () => clearTimeout(timeout);
   }, [settings]);
 
+  // Live update: updates value immediately but does NOT restart video
+  // Use this for slider drag (onChange event)
+  const updateSettingLive = useCallback(<K extends keyof AsciiSettings>(
+    key: K,
+    value: AsciiSettings[K]
+  ) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+  }, []);
+
+  // Committed update: updates value AND restarts video if needed
+  // Use this for toggles, dropdowns, and slider release
   const updateSetting = useCallback(<K extends keyof AsciiSettings>(
     key: K,
     value: AsciiSettings[K]
@@ -57,6 +68,12 @@ export function useSettings(initialVideoSrc: string) {
     if (RESTART_KEYS.includes(key)) {
       setSettingsVersion(v => v + 1);
     }
+  }, []);
+
+  // Commit current settings (trigger restart without changing values)
+  // Use this on slider mouse release / blur
+  const commitSettings = useCallback(() => {
+    setSettingsVersion(v => v + 1);
   }, []);
 
   const updateMultiple = useCallback((updates: Partial<AsciiSettings>) => {
@@ -89,8 +106,11 @@ export function useSettings(initialVideoSrc: string) {
     settings,
     settingsVersion,
     updateSetting,
+    updateSettingLive,
+    commitSettings,
     updateMultiple,
     resetToDefaults,
     setVideoSrc,
   };
 }
+

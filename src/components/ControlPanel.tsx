@@ -2,7 +2,9 @@ import type { AsciiSettings, CharsetKey } from '../types';
 
 interface ControlPanelProps {
   settings: AsciiSettings;
+  onUpdateLive: <K extends keyof AsciiSettings>(key: K, value: AsciiSettings[K]) => void;
   onUpdate: <K extends keyof AsciiSettings>(key: K, value: AsciiSettings[K]) => void;
+  onCommit: () => void;
   onReset: () => void;
 }
 
@@ -17,21 +19,23 @@ const CHARSETS: { value: CharsetKey; label: string }[] = [
   { value: 'emoji', label: 'Emoji' },
 ];
 
-// Slider component
+// Slider component with separate live and commit callbacks
 function Slider({ 
   label, 
   value, 
   min, 
   max, 
   step = 1,
-  onChange 
+  onChangeLive,
+  onCommit,
 }: { 
   label: string; 
   value: number; 
   min: number; 
   max: number; 
   step?: number;
-  onChange: (v: number) => void;
+  onChangeLive: (v: number) => void;  // Called on every drag tick
+  onCommit: () => void;               // Called on mouse release / blur
 }) {
   return (
     <div className="control-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '0.5rem' }}>
@@ -45,7 +49,9 @@ function Slider({
         max={max}
         step={step}
         value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => onChangeLive(Number(e.target.value))}
+        onPointerUp={onCommit}
+        onBlur={onCommit}
       />
     </div>
   );
@@ -76,7 +82,7 @@ function Toggle({
   );
 }
 
-export function ControlPanel({ settings, onUpdate, onReset }: ControlPanelProps) {
+export function ControlPanel({ settings, onUpdateLive, onUpdate, onCommit, onReset }: ControlPanelProps) {
   return (
     <>
       {/* Visual Settings */}
@@ -87,7 +93,8 @@ export function ControlPanel({ settings, onUpdate, onReset }: ControlPanelProps)
           value={settings.numColumns}
           min={40}
           max={200}
-          onChange={(v) => onUpdate('numColumns', v)}
+          onChangeLive={(v) => onUpdateLive('numColumns', v)}
+          onCommit={onCommit}
         />
         <Slider
           label="Brightness"
@@ -95,21 +102,24 @@ export function ControlPanel({ settings, onUpdate, onReset }: ControlPanelProps)
           min={0}
           max={2}
           step={0.1}
-          onChange={(v) => onUpdate('brightness', v)}
+          onChangeLive={(v) => onUpdateLive('brightness', v)}
+          onCommit={onCommit}
         />
         <Slider
           label="Blend (ASCII ↔ Video)"
           value={settings.blend}
           min={0}
           max={100}
-          onChange={(v) => onUpdate('blend', v)}
+          onChangeLive={(v) => onUpdateLive('blend', v)}
+          onCommit={onCommit}
         />
         <Slider
           label="Highlight"
           value={settings.highlight}
           min={0}
           max={100}
-          onChange={(v) => onUpdate('highlight', v)}
+          onChangeLive={(v) => onUpdateLive('highlight', v)}
+          onCommit={onCommit}
         />
         
         <div className="control-row">
@@ -145,7 +155,8 @@ export function ControlPanel({ settings, onUpdate, onReset }: ControlPanelProps)
             value={settings.trailLength}
             min={0}
             max={50}
-            onChange={(v) => onUpdate('trailLength', v)}
+            onChangeLive={(v) => onUpdateLive('trailLength', v)}
+            onCommit={onCommit}
           />
         )}
         
@@ -160,7 +171,8 @@ export function ControlPanel({ settings, onUpdate, onReset }: ControlPanelProps)
             value={settings.rippleSpeed}
             min={10}
             max={100}
-            onChange={(v) => onUpdate('rippleSpeed', v)}
+            onChangeLive={(v) => onUpdateLive('rippleSpeed', v)}
+            onCommit={onCommit}
           />
         )}
       </div>
@@ -173,14 +185,16 @@ export function ControlPanel({ settings, onUpdate, onReset }: ControlPanelProps)
           value={settings.audioEffect}
           min={0}
           max={100}
-          onChange={(v) => onUpdate('audioEffect', v)}
+          onChangeLive={(v) => onUpdateLive('audioEffect', v)}
+          onCommit={onCommit}
         />
         <Slider
           label="Audio Range"
           value={settings.audioRange}
           min={0}
           max={100}
-          onChange={(v) => onUpdate('audioRange', v)}
+          onChangeLive={(v) => onUpdateLive('audioRange', v)}
+          onCommit={onCommit}
         />
       </div>
 

@@ -18,7 +18,7 @@ function App() {
 
   const defaultVideoSrc = SAMPLE_VIDEOS.find(v => v.id === currentVideoId)?.videoUrl || SAMPLE_VIDEOS[0]?.videoUrl || '';
   
-  const { settings, settingsVersion, updateSetting, resetToDefaults, setVideoSrc } = useSettings(defaultVideoSrc);
+  const { settings, settingsVersion, updateSetting, updateSettingLive, commitSettings, resetToDefaults, setVideoSrc } = useSettings(defaultVideoSrc);
   const { cacheVideo, getCacheStats } = useVideoCache();
   const { uploadedVideos, isProcessing, addVideo, removeVideo, getVideoUrl } = useUploadedVideos();
 
@@ -104,7 +104,9 @@ function App() {
 
         <ControlPanel
           settings={settings}
+          onUpdateLive={updateSettingLive}
           onUpdate={updateSetting}
+          onCommit={commitSettings}
           onReset={resetToDefaults}
         />
 
