@@ -20,6 +20,13 @@ function saveToStorage(settings: AsciiSettings): void {
   }
 }
 
+// Keys that should trigger a video restart when changed
+const RESTART_KEYS: (keyof AsciiSettings)[] = [
+  'numColumns', 'colored', 'brightness', 'blend', 'highlight', 'charset',
+  'enableMouse', 'trailLength', 'enableRipple', 'rippleSpeed',
+  'audioEffect', 'audioRange', 'showStats', 'videoSrc'
+];
+
 export function useSettings(initialVideoSrc: string) {
   const [settings, setSettings] = useState<AsciiSettings>(() => {
     const saved = loadFromStorage();
@@ -29,6 +36,9 @@ export function useSettings(initialVideoSrc: string) {
       videoSrc: saved.videoSrc || initialVideoSrc,
     };
   });
+
+  // Version counter that increments on settings changes to trigger component remount
+  const [settingsVersion, setSettingsVersion] = useState(0);
 
   // Persist to localStorage on change (debounced)
   useEffect(() => {
@@ -43,15 +53,27 @@ export function useSettings(initialVideoSrc: string) {
     value: AsciiSettings[K]
   ) => {
     setSettings(prev => ({ ...prev, [key]: value }));
+    // Increment version if this setting should trigger restart
+    if (RESTART_KEYS.includes(key)) {
+      setSettingsVersion(v => v + 1);
+    }
   }, []);
 
   const updateMultiple = useCallback((updates: Partial<AsciiSettings>) => {
     setSettings(prev => ({ ...prev, ...updates }));
+    // Check if any update key should trigger restart
+    const shouldRestart = Object.keys(updates).some(k => 
+      RESTART_KEYS.includes(k as keyof AsciiSettings)
+    );
+    if (shouldRestart) {
+      setSettingsVersion(v => v + 1);
+    }
   }, []);
 
   const resetToDefaults = useCallback(() => {
-    setSettings({ ...DEFAULT_SETTINGS, videoSrc: settings.videoSrc });
-  }, [settings.videoSrc]);
+    setSettings(prev => ({ ...DEFAULT_SETTINGS, videoSrc: prev.videoSrc }));
+    setSettingsVersion(v => v + 1);
+  }, []);
 
   const setVideoSrc = useCallback((src: string, isCustom: boolean = false) => {
     setSettings(prev => ({
@@ -60,10 +82,12 @@ export function useSettings(initialVideoSrc: string) {
       isCustomVideo: isCustom,
       isPlaying: true,
     }));
+    setSettingsVersion(v => v + 1);
   }, []);
 
   return {
     settings,
+    settingsVersion,
     updateSetting,
     updateMultiple,
     resetToDefaults,

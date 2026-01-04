@@ -1,5 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useSettings } from './hooks/useSettings';
+import { useVideoCache } from './hooks/useVideoCache';
+import { useUploadedVideos } from './hooks/useUploadedVideos';
 import { VideoSelector } from './components/VideoSelector';
 import { ControlPanel } from './components/ControlPanel';
 import { CodeExport } from './components/CodeExport';
@@ -16,19 +18,58 @@ function App() {
 
   const defaultVideoSrc = SAMPLE_VIDEOS.find(v => v.id === currentVideoId)?.videoUrl || SAMPLE_VIDEOS[0]?.videoUrl || '';
   
-  const { settings, updateSetting, resetToDefaults, setVideoSrc } = useSettings(defaultVideoSrc);
+  const { settings, settingsVersion, updateSetting, resetToDefaults, setVideoSrc } = useSettings(defaultVideoSrc);
+  const { cacheVideo, getCacheStats } = useVideoCache();
+  const { uploadedVideos, isProcessing, addVideo, removeVideo, getVideoUrl } = useUploadedVideos();
 
-  const handleSelectVideo = useCallback((videoUrl: string, videoId: string) => {
+  // Generate a unique key for the AsciiPlayer to force remount on settings/video changes
+  const playerKey = useMemo(() => {
+    return `${settings.videoSrc}_v${settingsVersion}`;
+  }, [settings.videoSrc, settingsVersion]);
+
+  const handleSelectVideo = useCallback(async (videoUrl: string, videoId: string) => {
     setCurrentVideoId(videoId);
-    setVideoSrc(videoUrl, false);
     localStorage.setItem('v2a_last_video', videoId);
-  }, [setVideoSrc]);
+    
+    // Check if this is an uploaded video
+    if (videoId.startsWith('user_')) {
+      // Get from cache
+      const cachedUrl = await getVideoUrl(videoId);
+      if (cachedUrl) {
+        setVideoSrc(cachedUrl, true);
+      } else {
+        console.warn('[App] Uploaded video not found in cache:', videoId);
+      }
+    } else {
+      // For sample videos, try to use cache
+      try {
+        const cachedUrl = await cacheVideo(videoId, videoUrl);
+        setVideoSrc(cachedUrl, false);
+        console.log('[App] Cache stats:', getCacheStats());
+      } catch (error) {
+        console.error('[App] Failed to cache video:', error);
+        setVideoSrc(videoUrl, false);
+      }
+    }
+  }, [setVideoSrc, cacheVideo, getCacheStats, getVideoUrl]);
 
-  const handleUploadVideo = useCallback((file: File) => {
-    const url = URL.createObjectURL(file);
-    setCurrentVideoId(null); // Clear selected sample
-    setVideoSrc(url, true);
-  }, [setVideoSrc]);
+  const handleUploadVideo = useCallback(async (file: File) => {
+    const uploadedVideo = await addVideo(file);
+    if (uploadedVideo) {
+      setCurrentVideoId(uploadedVideo.id);
+      setVideoSrc(uploadedVideo.videoUrl, true);
+      localStorage.setItem('v2a_last_video', uploadedVideo.id);
+    }
+  }, [addVideo, setVideoSrc]);
+
+  const handleDeleteUploadedVideo = useCallback(async (videoId: string) => {
+    await removeVideo(videoId);
+    // If the deleted video was selected, clear selection
+    if (currentVideoId === videoId) {
+      setCurrentVideoId(null);
+      setVideoSrc('', false);
+    }
+  }, [removeVideo, currentVideoId, setVideoSrc]);
 
   const handleTogglePlay = useCallback(() => {
     updateSetting('isPlaying', !settings.isPlaying);
@@ -39,6 +80,7 @@ function App() {
       {/* Main ASCII Display */}
       <div className="ascii-container">
         <AsciiPlayer 
+          key={playerKey}
           settings={settings} 
           onTogglePlay={handleTogglePlay}
         />
@@ -55,6 +97,9 @@ function App() {
           currentVideoId={currentVideoId}
           onSelectVideo={handleSelectVideo}
           onUploadVideo={handleUploadVideo}
+          uploadedVideos={uploadedVideos}
+          onDeleteUploadedVideo={handleDeleteUploadedVideo}
+          isProcessingUpload={isProcessing}
         />
 
         <ControlPanel
