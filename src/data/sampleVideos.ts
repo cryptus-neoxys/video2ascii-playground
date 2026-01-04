@@ -24,9 +24,9 @@ export const SAMPLE_VIDEOS: SampleVideo[] = [
     videoUrl: 'https://videos.pexels.com/video-files/3813002/3813002-sd_640_360_30fps.mp4',
   },
   {
-    id: 'woman-portrait',
-    title: 'Portrait',
-    category: 'person',
+    id: 'forest-with-mountains',
+    title: 'Forest with Mountains',
+    category: 'nature',
     thumbnailUrl: 'https://images.pexels.com/videos/34588734/pexels-photo-34588734.jpeg?auto=compress&cs=tinysrgb&w=200',
     videoUrl: 'https://videos.pexels.com/video-files/34588734/14657402_640_360_30fps.mp4',
   },

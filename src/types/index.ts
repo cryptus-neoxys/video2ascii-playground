@@ -1,11 +1,25 @@
 // Types for Video2Ascii Playground
 
+export type VideoCategory = 'cinematic' | 'nature' | 'abstract' | 'person' | 'user';
+
 export interface SampleVideo {
   id: string;
   title: string;
   thumbnailUrl: string;
   videoUrl: string;
-  category: 'cinematic' | 'nature' | 'abstract' | 'person';
+  category: VideoCategory;
+}
+
+export interface UploadedVideo extends Omit<SampleVideo, 'category'> {
+  category: 'user';
+  uploadedAt: number;
+}
+
+export interface CacheMetadata {
+  videoId: string;
+  lastAccessed: number;
+  expiresAt: number;
+  blobSize: number;
 }
 
 export type CharsetKey = 
@@ -76,4 +90,15 @@ export const DEFAULT_SETTINGS: AsciiSettings = {
 export const CACHE_KEYS = {
   SETTINGS: 'v2a_settings',
   LAST_VIDEO: 'v2a_last_video',
+  CACHE_META: 'v2a_cache_meta',
+  UPLOADED_VIDEOS: 'v2a_uploaded_videos',
+  ACTIVE_TAB: 'v2a_active_tab',
 } as const;
+
+// Cache configuration
+export const CACHE_CONFIG = {
+  MAX_VIDEOS: 5,           // 4 sample + 1 user default
+  EXPIRY_DAYS: 7,          // 7 day expiration
+  EXPIRY_MS: 7 * 24 * 60 * 60 * 1000,
+} as const;
+
