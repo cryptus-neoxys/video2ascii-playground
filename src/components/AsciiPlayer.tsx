@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import Video2Ascii from 'video2ascii';
 import type { AsciiSettings } from '../types';
 
@@ -7,6 +8,28 @@ interface AsciiPlayerProps {
 }
 
 export function AsciiPlayer({ settings, onTogglePlay }: AsciiPlayerProps) {
+  // Track resize events to force re-render and prevent canvas blackout
+  const [resizeVersion, setResizeVersion] = useState(0);
+  
+  useEffect(() => {
+    let resizeTimeout: number;
+    
+    const handleResize = () => {
+      // Debounce resize events to avoid excessive re-renders
+      clearTimeout(resizeTimeout);
+      resizeTimeout = window.setTimeout(() => {
+        console.log('[AsciiPlayer] Window resized, forcing component remount');
+        setResizeVersion(prev => prev + 1);
+      }, 300); // Wait 300ms after resize stops
+    };
+    
+    window.addEventListener('resize', handleResize);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearTimeout(resizeTimeout);
+    };
+  }, []);
   if (!settings.videoSrc) {
     return (
       <div className="loading-skeleton" style={{ 
@@ -27,6 +50,7 @@ export function AsciiPlayer({ settings, onTogglePlay }: AsciiPlayerProps) {
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <Video2Ascii
+        key={`v2a-${resizeVersion}`}
         src={settings.videoSrc}
         numColumns={settings.numColumns}
         colored={settings.colored}
