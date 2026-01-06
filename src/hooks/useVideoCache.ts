@@ -1,6 +1,7 @@
 // Video caching hook using IndexedDB with LRU eviction and expiration
+// The cache handles all blob URL lifecycle internally - callers just get URLs
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { CacheMetadata } from '../types';
 import { CACHE_KEYS, CACHE_CONFIG } from '../types';
 import { getBlob, saveBlob, deleteBlob } from '../utils/indexeddb';
@@ -26,6 +27,18 @@ function saveCacheMeta(meta: CacheMetadata[]): void {
 export function useVideoCache() {
   const [cacheMeta, setCacheMeta] = useState<CacheMetadata[]>(() => loadCacheMeta());
   const [isReady, setIsReady] = useState(false);
+  
+  // Internal tracking of active blob URLs - auto-revoked when replaced or on unmount
+  const activeUrls = useRef<Map<string, string>>(new Map());
+
+  // Internal helper to revoke a URL if it exists
+  const revokeUrl = (videoId: string): void => {
+    const url = activeUrls.current.get(videoId);
+    if (url) {
+      URL.revokeObjectURL(url);
+      activeUrls.current.delete(videoId);
+    }
+  };
 
   // Initialize and clean expired entries on mount
   useEffect(() => {
@@ -42,8 +55,8 @@ export function useVideoCache() {
         }
       }
 
-      // Delete expired blobs
       for (const id of expiredIds) {
+        revokeUrl(id);
         await deleteBlob(id);
         console.log('[VideoCache] Deleted expired video:', id);
       }
@@ -66,13 +79,38 @@ export function useVideoCache() {
     }
   }, [cacheMeta, isReady]);
 
-  const getCachedVideo = useCallback(async (videoId: string): Promise<string | null> => {
-    const meta = cacheMeta.find(m => m.videoId === videoId);
+  // Cleanup all URLs on unmount
+  useEffect(() => {
+    const urls = activeUrls.current;
+    return () => {
+      urls.forEach(url => URL.revokeObjectURL(url));
+      urls.clear();
+    };
+  }, []);
+
+  // Evict LRU entry if at capacity
+  const evictLRU = useCallback(async (currentMeta: CacheMetadata[], excludeId?: string): Promise<CacheMetadata[]> => {
+    if (currentMeta.length < CACHE_CONFIG.MAX_VIDEOS) return currentMeta;
+
+    const sorted = [...currentMeta].sort((a, b) => a.lastAccessed - b.lastAccessed);
+    const toEvict = sorted.find(m => m.videoId !== excludeId);
     
-    if (!meta) {
-      console.log('[VideoCache] No cache entry for:', videoId);
-      return null;
+    if (toEvict) {
+      revokeUrl(toEvict.videoId);
+      await deleteBlob(toEvict.videoId);
+      console.log('[VideoCache] Evicted LRU:', toEvict.videoId);
+      return currentMeta.filter(m => m.videoId !== toEvict.videoId);
     }
+    return currentMeta;
+  }, []);
+
+  const getCachedVideo = useCallback(async (videoId: string): Promise<string | null> => {
+    // Return existing URL if we have one
+    const existingUrl = activeUrls.current.get(videoId);
+    if (existingUrl) return existingUrl;
+
+    const meta = cacheMeta.find(m => m.videoId === videoId);
+    if (!meta) return null;
 
     // Check expiration
     if (meta.expiresAt < Date.now()) {
@@ -82,7 +120,6 @@ export function useVideoCache() {
       return null;
     }
 
-    // Get blob from IndexedDB
     const blob = await getBlob(videoId);
     if (!blob) {
       console.log('[VideoCache] Blob not found for:', videoId);
@@ -90,37 +127,28 @@ export function useVideoCache() {
       return null;
     }
 
-    // Update last accessed time
+    // Update last accessed
     setCacheMeta(prev => prev.map(m => 
-      m.videoId === videoId 
-        ? { ...m, lastAccessed: Date.now() }
-        : m
+      m.videoId === videoId ? { ...m, lastAccessed: Date.now() } : m
     ));
 
-    // Return blob URL
-    return URL.createObjectURL(blob);
+    // Create URL and track it
+    const url = URL.createObjectURL(blob);
+    activeUrls.current.set(videoId, url);
+    return url;
   }, [cacheMeta]);
 
   const cacheVideo = useCallback(async (videoId: string, videoUrl: string): Promise<string> => {
-    // Check if already cached
+    // Check if already cached and valid
     const existingMeta = cacheMeta.find(m => m.videoId === videoId);
     if (existingMeta && existingMeta.expiresAt > Date.now()) {
       const cachedUrl = await getCachedVideo(videoId);
       if (cachedUrl) return cachedUrl;
     }
 
-    // Evict LRU if at capacity
-    if (cacheMeta.length >= CACHE_CONFIG.MAX_VIDEOS) {
-      const sorted = [...cacheMeta].sort((a, b) => a.lastAccessed - b.lastAccessed);
-      const toEvict = sorted[0];
-      if (toEvict) {
-        await deleteBlob(toEvict.videoId);
-        setCacheMeta(prev => prev.filter(m => m.videoId !== toEvict.videoId));
-        console.log('[VideoCache] Evicted LRU:', toEvict.videoId);
-      }
-    }
+    // Evict if needed
+    const currentMeta = await evictLRU(cacheMeta, videoId);
 
-    // Fetch and cache the video
     console.log('[VideoCache] Fetching video:', videoUrl);
     try {
       const response = await fetch(videoUrl);
@@ -137,27 +165,22 @@ export function useVideoCache() {
         blobSize: blob.size,
       };
 
-      setCacheMeta(prev => [...prev.filter(m => m.videoId !== videoId), newMeta]);
+      setCacheMeta([...currentMeta.filter(m => m.videoId !== videoId), newMeta]);
       
-      return URL.createObjectURL(blob);
+      // Revoke old URL if exists, create new one
+      revokeUrl(videoId);
+      const url = URL.createObjectURL(blob);
+      activeUrls.current.set(videoId, url);
+      return url;
     } catch (error) {
       console.error('[VideoCache] Failed to cache video:', error);
-      // Return original URL on error
-      return videoUrl;
+      return videoUrl; // Fallback to original URL
     }
-  }, [cacheMeta, getCachedVideo]);
+  }, [cacheMeta, getCachedVideo, evictLRU]);
 
   const cacheVideoBlob = useCallback(async (videoId: string, blob: Blob): Promise<string> => {
-    // Evict LRU if at capacity
-    if (cacheMeta.length >= CACHE_CONFIG.MAX_VIDEOS) {
-      const sorted = [...cacheMeta].sort((a, b) => a.lastAccessed - b.lastAccessed);
-      const toEvict = sorted[0];
-      if (toEvict) {
-        await deleteBlob(toEvict.videoId);
-        setCacheMeta(prev => prev.filter(m => m.videoId !== toEvict.videoId));
-        console.log('[VideoCache] Evicted LRU:', toEvict.videoId);
-      }
-    }
+    // Evict if needed
+    const currentMeta = await evictLRU(cacheMeta, videoId);
 
     await saveBlob(videoId, blob);
 
@@ -169,12 +192,17 @@ export function useVideoCache() {
       blobSize: blob.size,
     };
 
-    setCacheMeta(prev => [...prev.filter(m => m.videoId !== videoId), newMeta]);
+    setCacheMeta([...currentMeta.filter(m => m.videoId !== videoId), newMeta]);
     
-    return URL.createObjectURL(blob);
-  }, [cacheMeta]);
+    // Revoke old URL if exists, create new one
+    revokeUrl(videoId);
+    const url = URL.createObjectURL(blob);
+    activeUrls.current.set(videoId, url);
+    return url;
+  }, [cacheMeta, evictLRU]);
 
   const evictVideo = useCallback(async (videoId: string): Promise<void> => {
+    revokeUrl(videoId);
     await deleteBlob(videoId);
     setCacheMeta(prev => prev.filter(m => m.videoId !== videoId));
     console.log('[VideoCache] Manually evicted:', videoId);

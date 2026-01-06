@@ -38,26 +38,18 @@ export function useUploadedVideos() {
     setIsProcessing(true);
     
     try {
-      // Generate ID from filename
       const videoId = generateVideoId(file.name);
-      
-      // Generate title from filename (without extension)
       const title = file.name.replace(/\.[^/.]+$/, '');
-      
-      // Read file as blob
       const blob = new Blob([await file.arrayBuffer()], { type: file.type });
       
-      // Generate thumbnail
       let thumbnailUrl: string;
       try {
         thumbnailUrl = await generateThumbnail(blob);
       } catch (e) {
         console.warn('[UploadedVideos] Failed to generate thumbnail, using placeholder:', e);
-        // Use a simple placeholder if thumbnail generation fails
         thumbnailUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjExMiIgdmlld0JveD0iMCAwIDIwMCAxMTIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjIwMCIgaGVpZ2h0PSIxMTIiIGZpbGw9IiMxYTFhMjUiLz48dGV4dCB4PSIxMDAiIHk9IjU2IiBmaWxsPSIjNjA2MDcwIiBmb250LXNpemU9IjI0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIj7wn46sPC90ZXh0Pjwvc3ZnPg==';
       }
       
-      // Cache the video blob in IndexedDB
       const videoUrl = await cacheVideoBlob(videoId, blob);
       
       const newVideo: UploadedVideo = {
@@ -82,16 +74,12 @@ export function useUploadedVideos() {
   }, [cacheVideoBlob]);
 
   const removeVideo = useCallback(async (videoId: string): Promise<void> => {
-    // Remove from IndexedDB cache
     await evictVideo(videoId);
-    
-    // Remove from state
     setUploadedVideos(prev => prev.filter(v => v.id !== videoId));
     console.log('[UploadedVideos] Removed video:', videoId);
   }, [evictVideo]);
 
   const getVideoUrl = useCallback(async (videoId: string): Promise<string | null> => {
-    // Try to get from cache
     const video = uploadedVideos.find(v => v.id === videoId);
     if (!video) return null;
     

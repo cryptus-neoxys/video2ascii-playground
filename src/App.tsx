@@ -7,12 +7,12 @@ import { ControlPanel } from './components/ControlPanel';
 import { CodeExport } from './components/CodeExport';
 import { AsciiPlayer } from './components/AsciiPlayer';
 import { SAMPLE_VIDEOS } from './data/sampleVideos';
+import { CACHE_KEYS } from './types';
 import './index.css';
 
 function App() {
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(() => {
-    // Try to get last used video from localStorage
-    const saved = localStorage.getItem('v2a_last_video');
+    const saved = localStorage.getItem(CACHE_KEYS.LAST_VIDEO);
     return saved || SAMPLE_VIDEOS[0]?.id || null;
   });
 
@@ -22,26 +22,25 @@ function App() {
   const { cacheVideo, getCacheStats } = useVideoCache();
   const { uploadedVideos, isProcessing, addVideo, removeVideo, getVideoUrl } = useUploadedVideos();
 
-  // Generate a unique key for the AsciiPlayer to force remount on settings/video changes
   const playerKey = useMemo(() => {
     return `${settings.videoSrc}_v${settingsVersion}`;
   }, [settings.videoSrc, settingsVersion]);
 
   const handleSelectVideo = useCallback(async (videoUrl: string, videoId: string) => {
     setCurrentVideoId(videoId);
-    localStorage.setItem('v2a_last_video', videoId);
+    localStorage.setItem(CACHE_KEYS.LAST_VIDEO, videoId);
     
-    // Check if this is an uploaded video
     if (videoId.startsWith('user_')) {
-      // Get from cache
       const cachedUrl = await getVideoUrl(videoId);
       if (cachedUrl) {
         setVideoSrc(cachedUrl, true);
       } else {
-        console.warn('[App] Uploaded video not found in cache:', videoId);
+        // Video no longer in cache - already removed by getVideoUrl, just reset UI
+        console.warn('[App] Uploaded video no longer available:', videoId);
+        setCurrentVideoId(SAMPLE_VIDEOS[0]?.id || null);
+        setVideoSrc(SAMPLE_VIDEOS[0]?.videoUrl || '', false);
       }
     } else {
-      // For sample videos, try to use cache
       try {
         const cachedUrl = await cacheVideo(videoId, videoUrl);
         setVideoSrc(cachedUrl, false);
@@ -58,13 +57,12 @@ function App() {
     if (uploadedVideo) {
       setCurrentVideoId(uploadedVideo.id);
       setVideoSrc(uploadedVideo.videoUrl, true);
-      localStorage.setItem('v2a_last_video', uploadedVideo.id);
+      localStorage.setItem(CACHE_KEYS.LAST_VIDEO, uploadedVideo.id);
     }
   }, [addVideo, setVideoSrc]);
 
   const handleDeleteUploadedVideo = useCallback(async (videoId: string) => {
     await removeVideo(videoId);
-    // If the deleted video was selected, clear selection
     if (currentVideoId === videoId) {
       setCurrentVideoId(null);
       setVideoSrc('', false);
@@ -77,7 +75,6 @@ function App() {
 
   return (
     <div className="app">
-      {/* Main ASCII Display */}
       <div className="ascii-container">
         <AsciiPlayer 
           key={playerKey}
@@ -86,7 +83,6 @@ function App() {
         />
       </div>
 
-      {/* Control Sidebar */}
       <aside className="control-sidebar">
         <div className="sidebar-header">
           <h1>Video2Ascii Playground</h1>
