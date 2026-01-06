@@ -28,6 +28,11 @@ export async function generateThumbnail(videoBlob: Blob): Promise<string> {
 
     video.onseeked = () => {
       try {
+        if (video.videoWidth === 0 || video.videoHeight === 0) {
+          cleanup();
+          reject(new Error('Invalid video dimensions'));
+          return;
+        }
         // Create canvas and draw the frame
         const canvas = document.createElement('canvas');
         const aspectRatio = video.videoWidth / video.videoHeight;
