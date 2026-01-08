@@ -2,10 +2,10 @@
 
 export async function generateThumbnail(videoBlob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
-    const video = document.createElement('video');
+    const video = document.createElement("video");
     video.muted = true;
     video.playsInline = true;
-    video.preload = 'metadata';
+    video.preload = "metadata";
 
     const blobUrl = URL.createObjectURL(videoBlob);
     video.src = blobUrl;
@@ -17,11 +17,16 @@ export async function generateThumbnail(videoBlob: Blob): Promise<string> {
 
     video.onerror = () => {
       cleanup();
-      reject(new Error('Failed to load video for thumbnail'));
+      reject(new Error("Failed to load video for thumbnail"));
     };
 
     video.onloadedmetadata = () => {
       // Seek to min(duration, 1s)
+      if (!isFinite(video.duration) || video.duration <= 0) {
+        cleanup();
+        reject(new Error("Invalid video duration"));
+        return;
+      }
       const seekTime = Math.min(video.duration, 1);
       video.currentTime = seekTime;
     };
@@ -30,31 +35,31 @@ export async function generateThumbnail(videoBlob: Blob): Promise<string> {
       try {
         if (video.videoWidth === 0 || video.videoHeight === 0) {
           cleanup();
-          reject(new Error('Invalid video dimensions'));
+          reject(new Error("Invalid video dimensions"));
           return;
         }
         // Create canvas and draw the frame
-        const canvas = document.createElement('canvas');
+        const canvas = document.createElement("canvas");
         const aspectRatio = video.videoWidth / video.videoHeight;
-        
+
         // Thumbnail size: 200px width, maintain aspect ratio
         canvas.width = 200;
         canvas.height = Math.round(200 / aspectRatio);
 
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext("2d");
         if (!ctx) {
           cleanup();
-          reject(new Error('Failed to get canvas context'));
+          reject(new Error("Failed to get canvas context"));
           return;
         }
 
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
         // Convert to data URL (JPEG for smaller size)
-        const thumbnailUrl = canvas.toDataURL('image/jpeg', 0.7);
-        
+        const thumbnailUrl = canvas.toDataURL("image/jpeg", 0.7);
+
         cleanup();
-        console.log('[Thumbnail] Generated thumbnail for video');
+        console.log("[Thumbnail] Generated thumbnail for video");
         resolve(thumbnailUrl);
       } catch (error) {
         cleanup();
@@ -67,8 +72,8 @@ export async function generateThumbnail(videoBlob: Blob): Promise<string> {
 export function sanitizeFilename(filename: string): string {
   // Remove extension and special characters
   return filename
-    .replace(/\.[^/.]+$/, '') // Remove extension
-    .replace(/[^a-zA-Z0-9]/g, '_') // Replace special chars with underscore
+    .replace(/\.[^/.]+$/, "") // Remove extension
+    .replace(/[^a-zA-Z0-9]/g, "_") // Replace special chars with underscore
     .toLowerCase()
     .slice(0, 30); // Limit length
 }
